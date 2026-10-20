@@ -1,5 +1,6 @@
-# Ruta Crítica PERT/CPM
+# Tareas · Samuel Bonivento
 
-Página para estudiar (en la carpeta `pert/`) PERT y CPM con el método de red de flechas y nodos (T1, T2, TH): lecciones, el caso EcoRetail paso a paso y ejercicios con corrección automática.
+Páginas de estudio publicadas en GitHub Pages:
 
-Investigación de Operaciones · Corte II · Universidad de La Guajira
+- `pert/`: Ruta Crítica PERT/CPM (Investigación de Operaciones): red de flechas con T1, T2 y TH, el caso EcoRetail paso a paso y ejercicios con corrección automática.
+- `ingles/`: Speaking Challenge – My Life Experiences: frases con audio, las 8 tarjetas con modo memoria, ejercicios de gramática y simulacro con cronómetro.
