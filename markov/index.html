@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cadenas de Markov</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: cuaderno de una columna, pestañas fijas; diagramas de estados en lienzo con cuadrícula y matrices en tablas */
+:root {
+  --bg: #f2f6f6;
+  --surface: #ffffff;
+  --sunk: #e5eeee;
+  --ink: #142325;
+  --muted: #566b6e;
+  --line: #c6d6d7;
+  --grid: #dbe7e7;
+  --accent: #0e6a70;
+  --accent-soft: #d5eced;
+  --hot: #c2551a;
+  --hot-soft: #fbe6d9;
+  --ok: #1d7a4a;
+  --ok-soft: #dcf2e5;
+  --bad: #b8352b;
+  --bad-soft: #fbe3e1;
+  --s0: #0e6a70; --s1: #c2551a; --s2: #5b5bb0;
+  --display: "Archivo", "Arial Narrow", Arial, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", Roboto, Arial, sans-serif;
+  --mono: "JetBrains Mono", Consolas, monospace;
+  --r: 10px;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1617; --surface: #172122; --sunk: #1e2b2c; --ink: #e3eded; --muted: #96abad; --line: #2e3f41; --grid: #213031;
+    --accent: #5cc8cf; --accent-soft: #173739; --hot: #f39a62; --hot-soft: #3a2619; --ok: #5fd096; --ok-soft: #173326; --bad: #ff7b6f; --bad-soft: #3a1f1d;
+    --s0: #5cc8cf; --s1: #f39a62; --s2: #a3a3f2; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1617; --surface: #172122; --sunk: #1e2b2c; --ink: #e3eded; --muted: #96abad; --line: #2e3f41; --grid: #213031;
+  --accent: #5cc8cf; --accent-soft: #173739; --hot: #f39a62; --hot-soft: #3a2619; --ok: #5fd096; --ok-soft: #173326; --bad: #ff7b6f; --bad-soft: #3a1f1d;
+  --s0: #5cc8cf; --s1: #f39a62; --s2: #a3a3f2; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { overflow-x: hidden; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16.5px; line-height: 1.55; }
+.wrap { max-width: 760px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 48px; }
+header.top { padding-block: 22px 6px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(30px, 8vw, 42px); line-height: 1.05; margin: 4px 0 6px; text-wrap: balance; }
+h1 .c { color: var(--accent); }
+.lede { color: var(--muted); margin: 0 0 10px; max-width: 60ch; }
+h2 { font-family: var(--display); font-weight: 800; font-size: 23px; line-height: 1.15; margin: 0 0 8px; text-wrap: balance; }
+h3 { font-family: var(--display); font-weight: 600; font-size: 17px; margin: 0 0 6px; }
+p { margin: 0 0 10px; }
+ol, ul { margin: 0 0 10px; padding-left: 22px; }
+.num, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+nav.tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 8px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.tabrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tab { font: 600 14.5px var(--body); padding: 9px 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+section.panel, .stepbody, .exlist, .flash { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+.stepbody, .exlist, .flash { gap: 10px; }
+section.panel > *, .stepbody > *, .card > *, #stepVisual > * { min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; }
+.note { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 10px 12px; border-radius: 6px; }
+.note.hot { border-color: var(--hot); background: var(--hot-soft); }
+.note.ok { border-color: var(--ok); background: var(--ok-soft); }
+.note.bad { border-color: var(--bad); background: var(--bad-soft); }
+.note p:last-child { margin: 0; }
+.formula { font-family: var(--mono); font-weight: 700; font-size: 16px; background: var(--sunk); padding: 10px 12px; border-radius: 8px; overflow-x: auto; white-space: nowrap; }
+
+details.step { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+details.step > summary { list-style: none; cursor: pointer; padding: 14px 16px; display: flex; gap: 12px; align-items: center; }
+details.step > summary::-webkit-details-marker { display: none; }
+.stepnum { flex: none; width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--accent); color: var(--accent); display: grid; place-items: center; font: 700 15px var(--mono); }
+details.step[open] .stepnum { background: var(--accent); color: var(--surface); }
+.stepbody { padding: 0 16px 16px; }
+summary .sumtxt { display: grid; }
+summary .sumtxt b { font-family: var(--display); font-size: 17px; font-weight: 600; }
+summary .sumtxt span { color: var(--muted); font-size: 14px; }
+
+.tscroll { overflow-x: auto; }
+table { border-collapse: collapse; font-size: 15px; }
+table.full { width: 100%; }
+th, td { border: 1px solid var(--line); padding: 6px 9px; text-align: center; }
+th { background: var(--sunk); font-weight: 700; font-size: 13.5px; }
+td.l { text-align: left; }
+td.num { font-family: var(--mono); }
+td.sum { font-family: var(--mono); font-weight: 700; }
+td.sum.good { color: var(--ok); }
+td.sum.bad { color: var(--bad); }
+.mx caption { caption-side: top; font: 600 12px var(--mono); color: var(--muted); text-align: right; padding-bottom: 4px; letter-spacing: .06em; text-transform: uppercase; }
+.vlabel { writing-mode: vertical-rl; transform: rotate(180deg); font: 600 11px var(--mono); color: var(--muted); letter-spacing: .06em; text-transform: uppercase; border: 0; background: none; padding: 0 4px; }
+.st0 { color: var(--s0); } .st1 { color: var(--s1); } .st2 { color: var(--s2); }
+
+.diagbox { overflow-x: auto; background-color: var(--surface); background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px); background-size: 20px 20px; border: 1px solid var(--line); border-radius: var(--r); }
+.diagbox svg { display: block; min-width: 440px; width: 100%; height: auto; }
+
+.stepper { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.dots { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); border: 0; padding: 0; cursor: pointer; }
+.dot.on { background: var(--accent); }
+.btn { font: 700 15px var(--body); border-radius: 8px; padding: 10px 14px; border: 1px solid var(--accent); background: var(--accent); color: var(--surface); cursor: pointer; }
+.btn.ghost { background: var(--surface); color: var(--accent); }
+.btn.hot { background: var(--hot); border-color: var(--hot); }
+.btn:disabled { opacity: .4; cursor: default; }
+.btnrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.exitem { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; text-align: left; width: 100%; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); cursor: pointer; font: inherit; }
+.exitem b { font-family: var(--display); font-size: 17px; font-weight: 600; }
+.exitem small { color: var(--muted); grid-column: 1; }
+.pill { font: 700 11.5px var(--mono); letter-spacing: .04em; text-transform: uppercase; padding: 4px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.pill.done { background: var(--ok-soft); color: var(--ok); }
+.back { background: none; border: 0; color: var(--accent); font: 700 15px var(--body); cursor: pointer; padding: 4px 0; }
+.story { font-size: 15.5px; background: var(--sunk); border-radius: 8px; padding: 12px; }
+input.cell { width: 66px; font: 600 15.5px var(--mono); text-align: center; padding: 6px 3px; border: 1.5px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+input.cell.good { border-color: var(--ok); background: var(--ok-soft); }
+input.cell.bad { border-color: var(--bad); background: var(--bad-soft); }
+.qline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.score { font: 700 15px var(--mono); }
+.calc { font-family: var(--mono); font-size: 14px; background: var(--sunk); border-radius: 8px; padding: 10px 12px; overflow-x: auto; white-space: nowrap; line-height: 1.8; }
+.eqs { font-family: var(--mono); font-size: 14.5px; line-height: 1.9; overflow-x: auto; white-space: nowrap; }
+.eqs .tag { display: inline-grid; place-items: center; width: 20px; height: 20px; border: 1.5px solid var(--accent); border-radius: 50%; font-size: 11px; margin-right: 6px; color: var(--accent); }
+.hl { background: var(--hot-soft); color: var(--hot); border-radius: 3px; padding: 0 3px; font-weight: 700; }
+
+.fcard { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding: 14px 16px; text-align: left; cursor: pointer; color: var(--ink); font: inherit; width: 100%; }
+.fcard b { display: block; font-family: var(--display); font-weight: 600; font-size: 16.5px; }
+.fcard span { display: none; margin-top: 6px; }
+.fcard[aria-expanded="true"] span { display: block; }
+.fcard em { font-style: normal; font-size: 13px; color: var(--accent); }
+.bars { display: grid; gap: 8px; }
+.bar { display: grid; grid-template-columns: 90px 1fr 64px; gap: 8px; align-items: center; font-size: 14.5px; }
+.bar div { height: 14px; background: var(--sunk); border-radius: 99px; overflow: hidden; }
+.bar i { display: block; height: 100%; border-radius: 99px; }
+.bar span { font-family: var(--mono); text-align: right; }
+footer.foot { color: var(--muted); font-size: 13.5px; margin-top: 28px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">Investigación de Operaciones · Corte III</div>
+    <h1>Cadenas de <span class="c">Markov</span></h1>
+    <p class="lede">Estados, matriz de transición, probabilidad después de varios pasos y comportamiento a largo plazo, con el método de la clase.</p>
+  </header>
+
+  <nav class="tabs" aria-label="Secciones">
+    <div class="tabrow" role="tablist">
+      <button class="tab" role="tab" aria-controls="aprende" aria-selected="true">Aprende</button>
+      <button class="tab" role="tab" aria-controls="ejemplo" aria-selected="false">Ejemplo</button>
+      <button class="tab" role="tab" aria-controls="practica" aria-selected="false">Practica</button>
+      <button class="tab" role="tab" aria-controls="repaso" aria-selected="false">Repaso</button>
+    </div>
+  </nav>
+
+  <!-- APRENDE -->
+  <section class="panel" id="aprende" role="tabpanel">
+    <div class="card">
+      <h2>La idea con una ranita</h2>
+      <p>Una ranita vive en un estanque con 3 hojas. Cada día salta de una hoja a otra, o se queda en la misma. No decide al azar loco: desde cada hoja tiene <b>chances fijas</b> de ir a cada lado.</p>
+      <p>Lo importante: <b>para saber a dónde va mañana, solo importa dónde está hoy.</b> No importa por dónde pasó antes. Eso es una cadena de Markov.</p>
+      <div class="diagbox" id="frogDiag"></div>
+    </div>
+
+    <details class="step" open>
+      <summary><span class="stepnum">1</span><span class="sumtxt"><b>Variable y estados</b><span>¿Qué se mide y dónde puede estar?</span></span></summary>
+      <div class="stepbody">
+        <p>La <b>variable</b> es lo que observas en cada momento. Los <b>estados</b> son los valores que puede tomar. La profe los numera desde 0.</p>
+        <div class="tscroll"><table class="full">
+          <tr><th>Caso</th><th>Variable</th><th>Estados</th></tr>
+          <tr><td class="l">El Viajero</td><td class="l">Ciudad donde está el viajero cada día</td><td class="l">0 = Bogotá, 1 = Cali, 2 = Medellín</td></tr>
+          <tr><td class="l">Clima</td><td class="l">Cómo está el día</td><td class="l">0 = Soleado, 1 = Lluvioso</td></tr>
+        </table></div>
+        <div class="note"><p>Cada <b>paso</b> o <b>transición</b> es un salto en el tiempo: un día, un mes, una generación. Fíjate qué unidad usa el problema.</p></div>
+      </div>
+    </details>
+
+    <details class="step">
+      <summary><span class="stepnum">2</span><span class="sumtxt"><b>Matriz de transición</b><span>Filas = hoy (actual), columnas = mañana (futuro)</span></span></summary>
+      <div class="stepbody">
+        <p>Una tabla cuadrada. La <b>fila</b> dice dónde estás <b>ahora</b> y la <b>columna</b> a dónde vas <b>después</b>. Con 3 estados es de 3 × 3.</p>
+        <div class="tscroll" id="mxViajero"></div>
+        <div class="note ok"><p><b>Regla de oro:</b> cada <b>fila suma 1</b> (100%). Desde donde estés, tienes que ir a algún lado, aunque sea quedarte.</p></div>
+        <div class="note hot"><p><b>"El resto se divide equitativamente":</b> si se queda el 70%, sobra 30%. Dividido entre los otros 2 estados da 15% y 15%.</p></div>
+        <p>La <b>diagonal</b> (fila 0 columna 0, fila 1 columna 1…) es la probabilidad de <b>quedarse</b> en el mismo estado.</p>
+      </div>
+    </details>
+
+    <details class="step">
+      <summary><span class="stepnum">3</span><span class="sumtxt"><b>Diagrama de transición</b><span>Círculos y flechas con su probabilidad</span></span></summary>
+      <div class="stepbody">
+        <p>Un círculo por estado. Una flecha por cada número de la matriz que no sea 0, con la probabilidad escrita encima. Quedarse se dibuja como un <b>lazo</b> que sale y vuelve al mismo círculo.</p>
+        <div class="diagbox" id="diagViajero"></div>
+        <div class="note"><p>Con 2 estados hay 4 flechas. Con 3 estados hay hasta <b>9 flechas</b>: 3 lazos y 6 entre círculos (ida y vuelta entre cada par).</p></div>
+      </div>
+    </details>
+
+    <details class="step">
+      <summary><span class="stepnum">4</span><span class="sumtxt"><b>Probabilidad después de n pasos</b><span>Vector × matriz, fila por columna</span></span></summary>
+      <div class="stepbody">
+        <p>Escribe dónde estás hoy como un <b>vector</b>: un 1 en tu estado y 0 en los demás. Si hoy está en Cali: <span class="mono">[0 1 0]</span>.</p>
+        <p>Multiplica el vector por la matriz: <b>fila del vector por cada columna</b>. El resultado es el vector del día siguiente. Repítelo tantas veces como pasos pida el problema.</p>
+        <div class="calc">[0,18  0,34  0,48] × columna Bogotá (0,1 · 0,2 · 0,2)<br>= 0,18·0,1 + 0,34·0,2 + 0,48·0,2 = 0,018 + 0,068 + 0,096 = <b>0,182</b></div>
+        <div class="note hot"><p><b>Cuenta bien los pasos.</b> "Al cabo de 3 días" son 3 multiplicaciones. Con generaciones: abuelo → papá es 1 paso, abuelo → nieto son 2 pasos. Dibuja la escalerita: Hoy → 1 → 2 → 3.</p></div>
+        <p>Comprobación: cada vector que obtienes también debe <b>sumar 1</b>.</p>
+      </div>
+    </details>
+
+    <details class="step">
+      <summary><span class="stepnum">5</span><span class="sumtxt"><b>A largo plazo (estado estable)</b><span>Las π: el porcentaje final de cada estado</span></span></summary>
+      <div class="stepbody">
+        <p>Después de muchísimos pasos, los porcentajes ya no cambian. A esos valores finales los llamamos <b>π₀, π₁, π₂</b>.</p>
+        <p>Se plantea una ecuación por cada <b>columna</b> de la matriz, más la ecuación de que todo suma 1:</p>
+        <div class="eqs" id="eqsViajero"></div>
+        <ol>
+          <li>De la ecuación ④ despeja π₀ = 1 − π₁ − π₂.</li>
+          <li>Reemplaza eso en las otras ecuaciones. Te quedan ecuaciones con solo π₁ y π₂.</li>
+          <li>Resuelve, y al final calcula π₀ con lo que encontraste.</li>
+        </ol>
+        <div class="note ok"><p>Comprueba que π₀ + π₁ + π₂ = 1. Si no da, hay un error de signos.</p></div>
+      </div>
+    </details>
+
+    <details class="step">
+      <summary><span class="stepnum">6</span><span class="sumtxt"><b>Llevarlo a personas</b><span>¿Cuántos de N?</span></span></summary>
+      <div class="stepbody">
+        <p>Si te preguntan "de 500 personas, ¿cuántas estarán en el estado 1 a largo plazo?", multiplica: <b>500 × π₁</b>.</p>
+        <p>Ejemplo: π₁ = 0,3182 y N = 500 → 500 × 0,3182 ≈ <b>159 personas</b>.</p>
+        <div class="note"><p>Escribe la respuesta interpretada: "A largo plazo, aproximadamente 159 de las 500 personas estarán en…".</p></div>
+      </div>
+    </details>
+
+    <div class="card">
+      <h3>La receta completa</h3>
+      <ol>
+        <li>Define la variable y numera los estados (0, 1, 2).</li>
+        <li>Llena la matriz: fila = actual, columna = futuro. Verifica que cada fila sume 1.</li>
+        <li>Dibuja el diagrama: lazos para quedarse y flechas entre estados.</li>
+        <li>Para n pasos: vector inicial × matriz, n veces.</li>
+        <li>Para largo plazo: ecuaciones por columnas + suma = 1, y despeja.</li>
+        <li>Interpreta: porcentajes y, si te dan N, cuántas personas.</li>
+      </ol>
+      <button class="btn" data-goto="ejemplo">Ver el ejemplo de la profe →</button>
+    </div>
+  </section>
+
+  <!-- EJEMPLO -->
+  <section class="panel" id="ejemplo" role="tabpanel" hidden>
+    <div class="card">
+      <div class="eyebrow">Video de la profe · ejemplo paso a paso</div>
+      <h2>El Viajero</h2>
+      <p class="story">Un viajero opera entre Bogotá, Cali y Medellín. Después de trabajar un día en Medellín, sigue allí al día siguiente con probabilidad 0,4 y viaja a Cali con 0,4. Si duerme en Cali, con probabilidad 1/5 sigue en Cali y en el 60% de los casos viaja a Medellín. Si trabaja en Bogotá, se queda con 10% y viaja a Cali con 30%.</p>
+    </div>
+    <div class="card">
+      <div class="stepper">
+        <button class="btn ghost" id="prevStep">← Atrás</button>
+        <div class="dots" id="dots"></div>
+        <button class="btn" id="nextStep">Siguiente →</button>
+      </div>
+      <div class="eyebrow" id="stepLabel" style="margin-top:14px"></div>
+      <h3 id="stepTitle"></h3>
+      <div id="stepText"></div>
+      <div id="stepVisual" style="margin-top:10px; display:grid; gap:10px"></div>
+    </div>
+  </section>
+
+  <!-- PRACTICA -->
+  <section class="panel" id="practica" role="tabpanel" hidden>
+    <div id="exMenu" class="panel">
+      <div class="card">
+        <h2>Ejercicios para practicar</h2>
+        <p>Son ejercicios nuevos, parecidos al caso de las universidades, para que luego hagas ese tú solo. Resuélvelos en tu cuaderno, escribe tus números y toca <b>Revisar</b>.</p>
+        <p class="lede">Puedes escribir 0,25 o 25 (en porcentaje): la página entiende las dos formas.</p>
+      </div>
+      <div class="exlist" id="exList"></div>
+    </div>
+    <div id="exView" class="panel" hidden></div>
+  </section>
+
+  <!-- REPASO -->
+  <section class="panel" id="repaso" role="tabpanel" hidden>
+    <div class="card">
+      <h2>Fórmulas de bolsillo</h2>
+      <div style="display:grid; gap:8px">
+        <div class="formula">Fila = actual · Columna = futuro</div>
+        <div class="formula">Cada fila suma 1</div>
+        <div class="formula">Vector(n+1) = Vector(n) × P</div>
+        <div class="formula">πⱼ = Σ πᵢ · P(i→j)  (por columnas)</div>
+        <div class="formula">π₀ + π₁ + π₂ = 1</div>
+        <div class="formula">Personas = N × π</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Comprueba tu matriz</h2>
+      <p class="lede">Escribe la matriz de cualquier ejercicio (como el de las universidades). Te dice si cada fila suma 1 y te dibuja el diagrama, sin darte las respuestas.</p>
+      <div class="tscroll" id="checker"></div>
+      <div class="diagbox" id="checkDiag" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h2>Errores que restan puntos</h2>
+      <ol>
+        <li>Poner los datos en la columna en vez de la fila. La fila es dónde está <b>ahora</b>.</li>
+        <li>Olvidar repartir "el resto" y que la fila no sume 1.</li>
+        <li>Contar mal los pasos: "al cabo de 3 días" son 3 multiplicaciones.</li>
+        <li>Armar las ecuaciones de π con las filas. Van por <b>columnas</b>.</li>
+        <li>Olvidar la ecuación π₀ + π₁ + π₂ = 1.</li>
+        <li>Dejar la respuesta sin interpretar. Di qué significa en el problema.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h2>Preguntas de la guía</h2>
+      <p class="lede">Toca cada pregunta para ver la respuesta. Primero intenta decirla tú.</p>
+      <div class="flash" id="flash"></div>
+    </div>
+  </section>
+
+  <footer class="foot">Hecho para estudiar Cadenas de Markov · método de la clase: matriz actual → futuro, vector × matriz y π por columnas.</footer>
+</div>
+
+<script>
+/* ---------- utilidades numéricas ---------- */
+const r4 = v => Math.round(v * 10000) / 10000;
+const fmt = (v, d = 4) => { const x = Math.round(v * 10 ** d) / 10 ** d; return String(x).replace(".", ","); };
+const pct = v => fmt(v * 100, 2) + "%";
+const SUB = ["₀", "₁", "₂", "₃"];
+function step(vec, P) { return P[0].map((_, j) => vec.reduce((s, vi, i) => s + vi * P[i][j], 0)); }
+function steady(P) {
+  const n = P.length, A = [], b = [];
+  for (let j = 0; j < n - 1; j++) { A.push(P.map((row, i) => row[j] - (i === j ? 1 : 0))); b.push(0); }
+  A.push(Array(n).fill(1)); b.push(1);
+  for (let c = 0; c < n; c++) {
+    let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+    [A[c], A[p]] = [A[p], A[c]]; [b[c], b[p]] = [b[p], b[c]];
+    for (let r = 0; r < n; r++) if (r !== c) { const f = A[r][c] / A[c][c]; for (let k = c; k < n; k++) A[r][k] -= f * A[c][k]; b[r] -= f * b[c]; }
+  }
+  return b.map((v, i) => v / A[i][i]);
+}
+
+/* ---------- dibujo del diagrama ---------- */
+const COLORS = ["var(--s0)", "var(--s1)", "var(--s2)"];
+function diagram(P, names, id) {
+  const n = P.length, W = 520, H = n === 2 ? 230 : 330, R = 34;
+  const pos = n === 2 ? [[140, 135], [380, 135]] : [[110, 250], [410, 250], [260, 95]];
+  const loopDir = n === 2 ? [[-1, 0], [1, 0]] : [[-0.7, 0.7], [0.7, 0.7], [0, -1]];
+  let s = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de transición" font-family="JetBrains Mono, Consolas, monospace">`;
+  s += `<defs><marker id="m-${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--ink)"/></marker></defs>`;
+  const lab = (x, y, t) => `<text x="${x}" y="${y + 4}" text-anchor="middle" font-size="13" font-weight="700" fill="var(--ink)" paint-order="stroke" stroke="var(--surface)" stroke-width="5">${t}</text>`;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const p = P[i][j]; if (!(p > 0)) continue;
+    if (i === j) {
+      const [x, y] = pos[i], [dx, dy] = loopDir[i];
+      const ang = Math.atan2(dy, dx), a1 = ang - 0.55, a2 = ang + 0.55;
+      const sx = x + R * Math.cos(a1), sy = y + R * Math.sin(a1), ex = x + R * Math.cos(a2), ey = y + R * Math.sin(a2);
+      const c1x = x + (R + 62) * Math.cos(a1 - 0.25), c1y = y + (R + 62) * Math.sin(a1 - 0.25), c2x = x + (R + 62) * Math.cos(a2 + 0.25), c2y = y + (R + 62) * Math.sin(a2 + 0.25);
+      s += `<path d="M${sx},${sy} C${c1x},${c1y} ${c2x},${c2y} ${ex},${ey}" fill="none" stroke="var(--ink)" stroke-width="1.6" marker-end="url(#m-${id})"/>`;
+      s += lab(x + (R + 52) * dx, y + (R + 52) * dy, fmt(p, 3));
+    } else {
+      const [x1, y1] = pos[i], [x2, y2] = pos[j];
+      const a = Math.atan2(y2 - y1, x2 - x1), nx = -Math.sin(a), ny = Math.cos(a), off = 26;
+      const mx = (x1 + x2) / 2 + nx * off * 1.6, my = (y1 + y2) / 2 + ny * off * 1.6;
+      const sa = Math.atan2(my - y1, mx - x1), ea = Math.atan2(y2 - my, x2 - mx);
+      const sx = x1 + R * Math.cos(sa), sy = y1 + R * Math.sin(sa), ex = x2 - (R + 2) * Math.cos(ea), ey = y2 - (R + 2) * Math.sin(ea);
+      s += `<path d="M${sx},${sy} Q${mx},${my} ${ex},${ey}" fill="none" stroke="var(--ink)" stroke-width="1.6" marker-end="url(#m-${id})"/>`;
+      s += lab(0.25 * x1 + 0.5 * mx + 0.25 * x2, 0.25 * y1 + 0.5 * my + 0.25 * y2, fmt(p, 3));
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const [x, y] = pos[i];
+    s += `<circle cx="${x}" cy="${y}" r="${R}" fill="var(--surface)" stroke="${COLORS[i]}" stroke-width="3"/>`;
+    s += `<text x="${x}" y="${y - 2}" text-anchor="middle" font-size="16" font-weight="700" fill="${COLORS[i]}">${i}</text>`;
+    s += `<text x="${x}" y="${y + 15}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${names[i].slice(0, 11)}</text>`;
+  }
+  return s + "</svg>";
+}
+
+function matrixTable(P, names, opts = {}) {
+  const n = P.length;
+  let h = `<table class="mx"><caption>Futuro →</caption><tr><th rowspan="${n + 1}" class="vlabel">Actual</th><th>Est</th>${names.map((nm, j) => `<th class="st${j}">${j}<br><small>${nm}</small></th>`).join("")}${opts.noSum ? "" : "<th>Suma</th>"}</tr>`;
+  P.forEach((row, i) => {
+    const sm = row.reduce((a, b) => a + b, 0);
+    h += `<tr><th class="st${i}">${i} <small>${names[i]}</small></th>${row.map(v => `<td class="num">${fmt(v, 3)}</td>`).join("")}${opts.noSum ? "" : `<td class="sum ${Math.abs(sm - 1) < 1e-9 ? "good" : "bad"}">${fmt(sm, 3)}</td>`}</tr>`;
+  });
+  return h + "</table>";
+}
+
+function eqsHTML(P) {
+  const n = P.length; let h = "";
+  for (let j = 0; j < n; j++) h += `<div><span class="tag">${j + 1}</span>π${SUB[j]} = ${P.map((row, i) => `${fmt(row[j], 3)}π${SUB[i]}`).join(" + ")}</div>`;
+  h += `<div><span class="tag">${n + 1}</span>1 = ${P.map((_, i) => `π${SUB[i]}`).join(" + ")}</div>`;
+  return h;
+}
+
+function stepCalc(vec, P, names) {
+  const nx = step(vec, P);
+  return nx.map((v, j) => `<span class="st${j}">${names[j]}</span>: ${vec.map((vi, i) => `${fmt(vi)}·${fmt(P[i][j], 3)}`).join(" + ")} = <b>${fmt(v)}</b>`).join("<br>");
+}
+function bars(pi, names) {
+  return `<div class="bars">${pi.map((v, i) => `<div class="bar"><b class="st${i}">${names[i]}</b><div><i style="width:${v * 100}%;background:${COLORS[i]}"></i></div><span>${pct(v)}</span></div>`).join("")}</div>`;
+}
+
+/* ---------- datos ---------- */
+const V = { P: [[0.1, 0.3, 0.6], [0.2, 0.2, 0.6], [0.2, 0.4, 0.4]], names: ["Bogotá", "Cali", "Medellín"] };
+const FROG = { P: [[0.5, 0.3, 0.2], [0.1, 0.6, 0.3], [0.4, 0.2, 0.4]], names: ["Hoja A", "Hoja B", "Hoja C"] };
+
+const EXERCISES = [
+  { id: "clima", title: "El clima en Riohacha", tag: "2 estados · calentamiento", unit: "días",
+    story: "Si hoy está soleado, mañana sigue soleado con probabilidad 0,8 y llueve con 0,2. Si hoy llueve, mañana sale el sol con 0,4 y sigue lloviendo con 0,6.",
+    names: ["Soleado", "Lluvioso"], P: [[0.8, 0.2], [0.4, 0.6]],
+    b: { from: 1, to: 0, n: 2, q: "Si hoy llueve, ¿cuál es la probabilidad de que esté soleado dentro de 2 días?" },
+    hints: ["Estados: 0 = Soleado y 1 = Lluvioso. Fila 1: hoy llueve → 0,4 sol y 0,6 lluvia.", "Vector inicial [0 1]. Día 1: [0,4  0,6].", "A largo plazo: π₀ = 0,8π₀ + 0,4π₁, con π₀ + π₁ = 1. Despeja y te queda 0,2π₀ = 0,4π₁."] },
+  { id: "operadores", title: "Operadores de celular en Maicao", tag: "3 estados", unit: "meses",
+    story: "Cada mes los usuarios pueden cambiarse de operador. De los usuarios de Claro, el 70% sigue en Claro, el 20% se pasa a Movistar y el resto a Tigo. De los de Movistar, el 60% se queda y el resto se divide equitativamente entre los otros dos. De los de Tigo, el 75% se queda, el 15% se va a Claro y el resto a Movistar.",
+    names: ["Claro", "Movistar", "Tigo"], P: [[0.7, 0.2, 0.1], [0.2, 0.6, 0.2], [0.15, 0.1, 0.75]],
+    b: { from: 1, to: 1, n: 2, q: "Si un usuario está hoy en Movistar, ¿cuál es la probabilidad de que siga en Movistar dentro de 2 meses?" },
+    N: { total: 1200, state: 0, q: "A largo plazo, de 1200 usuarios, ¿cuántos estarán en Claro?" },
+    hints: ["Claro: el resto es 100 − 70 − 20 = 10%. Movistar: sobra 40%, que entre dos da 20% y 20%. Tigo: 100 − 75 − 15 = 10%.", "Vector inicial [0 1 0]. Mes 1: [0,2  0,6  0,2].", "Largo plazo: arma π₀, π₁ y π₂ por columnas y usa π₀ = 1 − π₁ − π₂."] },
+  { id: "almuerzo", title: "¿Dónde almuerzan en la U?", tag: "3 estados · 3 pasos", unit: "días",
+    story: "Los estudiantes almuerzan en la cafetería, en un corrientazo o en comida rápida. De los que hoy comen en la cafetería, el 50% vuelve mañana, el 30% va al corrientazo y el resto a comida rápida. Del corrientazo, el 70% repite y el resto se divide equitativamente. De comida rápida, el 40% repite, el 40% va a la cafetería y el resto al corrientazo.",
+    names: ["Cafetería", "Corrientazo", "Rápida"], P: [[0.5, 0.3, 0.2], [0.15, 0.7, 0.15], [0.4, 0.2, 0.4]],
+    b: { from: 2, to: 2, n: 3, q: "Si un estudiante come hoy comida rápida, ¿cuál es la probabilidad de que coma comida rápida al cabo de 3 días?" },
+    N: { total: 300, state: 1, q: "A largo plazo, de 300 estudiantes, ¿cuántos almorzarán en el corrientazo?" },
+    hints: ["Corrientazo: sobra 30%, que entre dos da 15% y 15%. Rápida: 100 − 40 − 40 = 20% al corrientazo.", "Son 3 pasos: [0 0 1] → [0,4  0,2  0,4] → [0,39  0,34  0,27] → …", "En el largo plazo te sirve despejar primero π₀ = 1 − π₁ − π₂ y reemplazar en las ecuaciones ② y ③."] },
+  { id: "futbol", title: "Hinchas de generación en generación", tag: "Como el caso de la guía", unit: "generaciones",
+    story: "En La Guajira, el 75% de los hijos de hinchas del Junior también son del Junior, el 10% se vuelven de Nacional y el resto del Unión Magdalena. De los hijos de hinchas de Nacional, el 60% siguen con Nacional y el resto se divide equitativamente entre los otros dos equipos. Por su parte, el 80% de los hijos de hinchas del Unión siguen con el Unión y el 5% se vuelven de Nacional.",
+    names: ["Junior", "Nacional", "Unión"], P: [[0.75, 0.1, 0.15], [0.2, 0.6, 0.2], [0.15, 0.05, 0.8]],
+    b: { from: 1, to: 1, n: 2, q: "Andrés cuenta que su papá era hincha de Nacional. ¿Cuál es la probabilidad de que el hijo de Andrés sea hincha de Nacional?" },
+    N: { total: 800, state: 0, q: "A largo plazo, si se reúnen 800 hinchas, ¿cuántos serán del Junior?" },
+    hints: ["Unión: el 80% se queda, el 5% va a Nacional y el resto (15%) al Junior. ¡Ojo con el orden de columnas!", "Cuenta las generaciones: papá de Andrés → Andrés → hijo de Andrés son 2 pasos. Vector inicial [0 1 0].", "Para N personas: primero saca las π y luego multiplica 800 × π₀."] }
+];
+EXERCISES.forEach(ex => {
+  let v = ex.names.map((_, i) => (i === ex.b.from ? 1 : 0)); ex.vecs = [];
+  for (let k = 0; k < ex.b.n; k++) { v = step(v, ex.P); ex.vecs.push(v); }
+  ex.bAns = v[ex.b.to]; ex.pi = steady(ex.P);
+  if (ex.N) ex.NAns = ex.N.total * ex.pi[ex.N.state];
+});
+
+/* ---------- pestañas ---------- */
+const $ = id => document.getElementById(id);
+const store = { get(k, d) { try { const v = localStorage.getItem("mk-" + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem("mk-" + k, JSON.stringify(v)); } catch (e) {} } };
+const tabs = [...document.querySelectorAll(".tab")];
+function openTab(id, top = true) {
+  tabs.forEach(t => { const on = t.getAttribute("aria-controls") === id; t.setAttribute("aria-selected", on); $(t.getAttribute("aria-controls")).hidden = !on; });
+  store.set("tab", id); if (top) window.scrollTo({ top: 0 });
+}
+tabs.forEach(t => t.addEventListener("click", () => openTab(t.getAttribute("aria-controls"))));
+document.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => openTab(b.dataset.goto)));
+
+/* aprende */
+$("frogDiag").innerHTML = diagram(FROG.P, FROG.names, "frog");
+$("mxViajero").innerHTML = matrixTable(V.P, V.names);
+$("diagViajero").innerHTML = diagram(V.P, V.names, "vj");
+$("eqsViajero").innerHTML = eqsHTML(V.P);
+
+/* ---------- ejemplo paso a paso ---------- */
+const v1 = step([0, 1, 0], V.P), v2 = step(v1, V.P), v3 = step(v2, V.P), piV = steady(V.P);
+const STEPS = [
+  { t: "Variable y estados", x: `<p><b>Variable:</b> la ciudad donde está el viajero cada día.</p><p><b>Estados:</b> 0 = Bogotá, 1 = Cali, 2 = Medellín.</p>`, v: () => "" },
+  { t: "Llena la matriz fila por fila", x: `<p><b>Fila Bogotá:</b> se queda 0,1, va a Cali 0,3 y el resto (0,6) a Medellín.</p><p><b>Fila Cali:</b> 1/5 = 0,2 se queda, 0,6 a Medellín y el resto (0,2) a Bogotá.</p><p><b>Fila Medellín:</b> se queda 0,4, va a Cali 0,4 y el resto (0,2) a Bogotá.</p>`, v: () => `<div class="tscroll">${matrixTable(V.P, V.names)}</div><div class="note ok"><p>Todas las filas suman 1. ✔</p></div>` },
+  { t: "Diagrama de transición", x: `<p>Tres círculos, tres lazos (quedarse) y seis flechas entre ciudades, cada una con su probabilidad.</p>`, v: () => `<div class="diagbox">${diagram(V.P, V.names, "ex")}</div>` },
+  { t: "b) Hoy en Cali: día 1", x: `<p>Pregunta: si hoy está en Cali, ¿probabilidad de estar en Cali al cabo de 3 días? Son <b>3 pasos</b>: Hoy → 1 → 2 → 3.</p><p>Vector de hoy: <span class="mono">[0 1 0]</span>. Fila por columna:</p>`, v: () => `<div class="calc">${stepCalc([0, 1, 0], V.P, V.names)}</div><p>Día 1 = <span class="mono">[${v1.map(x => fmt(x)).join("  ")}]</span>. Es justo la fila de Cali.</p>` },
+  { t: "Día 2", x: `<p>Ahora el vector del día 1 multiplica otra vez a la matriz.</p>`, v: () => `<div class="calc">${stepCalc(v1, V.P, V.names)}</div><p>Día 2 = <span class="mono">[${v2.map(x => fmt(x)).join("  ")}]</span></p>` },
+  { t: "Día 3: respuesta del inciso b", x: `<p>Una multiplicación más.</p>`, v: () => `<div class="calc">${stepCalc(v2, V.P, V.names)}</div><div class="note ok"><p>La probabilidad de que esté en <b>Cali</b> al cabo de 3 días es <b>${fmt(v3[1])}</b> (${pct(v3[1])}).</p></div>` },
+  { t: "c) Largo plazo: las ecuaciones", x: `<p>Una ecuación por <b>columna</b> y la de suma 1:</p>`, v: () => `<div class="eqs">${eqsHTML(V.P)}</div><p>De ④ despeja: <b>π₀ = 1 − π₁ − π₂</b> ⑤</p>` },
+  { t: "Reemplazar ⑤ en ③", x: ``, v: () => `<div class="eqs">π₂ = 0,6π₀ + 0,6π₁ + 0,4π₂<br>π₂ = 0,6(<span class="hl">1 − π₁ − π₂</span>) + 0,6π₁ + 0,4π₂<br>π₂ = 0,6 − 0,6π₁ − 0,6π₂ + 0,6π₁ + 0,4π₂<br>π₂ = 0,6 − 0,2π₂<br>1,2π₂ = 0,6  →  <b>π₂ = 0,5</b></div>` },
+  { t: "Reemplazar ⑤ en ② y luego π₂", x: ``, v: () => `<div class="eqs">π₁ = 0,3(<span class="hl">1 − π₁ − π₂</span>) + 0,2π₁ + 0,4π₂<br>π₁ = 0,3 − 0,3π₁ − 0,3π₂ + 0,2π₁ + 0,4π₂<br>−0,3 = −1,1π₁ + 0,1π₂   ⑥<br>−0,3 = −1,1π₁ + 0,1(<span class="hl">0,5</span>)<br>−0,35 = −1,1π₁  →  <b>π₁ = 0,3182</b><br>π₀ = 1 − 0,3182 − 0,5  →  <b>π₀ = 0,1818</b></div>` },
+  { t: "Respuesta del inciso c", x: `<p>A largo plazo, el viajero pasa estos porcentajes de días en cada ciudad:</p>`, v: () => `${bars(piV, V.names)}<div class="note ok"><p>Bogotá ${pct(piV[0])}, Cali ${pct(piV[1])} y Medellín ${pct(piV[2])}. Suman 100%. ✔</p></div>` }
+];
+let cur = 0;
+STEPS.forEach((_, k) => { const d = document.createElement("button"); d.className = "dot"; d.setAttribute("aria-label", "Paso " + (k + 1)); d.addEventListener("click", () => showStep(k)); $("dots").appendChild(d); });
+function showStep(k) {
+  cur = Math.max(0, Math.min(STEPS.length - 1, k));
+  const s = STEPS[cur];
+  $("stepLabel").textContent = `Paso ${cur + 1} de ${STEPS.length}`;
+  $("stepTitle").textContent = s.t; $("stepText").innerHTML = s.x; $("stepVisual").innerHTML = s.v();
+  [...$("dots").children].forEach((d, i) => d.classList.toggle("on", i <= cur));
+  $("prevStep").disabled = cur === 0; $("nextStep").disabled = cur === STEPS.length - 1;
+  store.set("step", cur);
+}
+$("prevStep").addEventListener("click", () => showStep(cur - 1));
+$("nextStep").addEventListener("click", () => showStep(cur + 1));
+
+/* ---------- práctica ---------- */
+const parse = v => { const s = String(v).trim().replace("%", "").replace(",", "."); if (s === "") return NaN; let x = Number(s); if (s.includes("/")) { const [a, b] = s.split("/").map(Number); x = a / b; } return x; };
+const asProb = v => { const x = parse(v); return x > 1.0001 ? x / 100 : x; };
+const okP = (v, t) => Math.abs(asProb(v) - t) <= 0.0015;
+const okN = (v, t) => Math.abs(parse(v) - t) <= 1.01;
+
+function renderMenu() {
+  const done = store.get("done", {});
+  $("exList").innerHTML = "";
+  EXERCISES.forEach(ex => {
+    const b = document.createElement("button"); b.className = "exitem";
+    b.innerHTML = `<b>${ex.title}</b><span class="pill ${done[ex.id] ? "done" : ""}">${done[ex.id] ? "Hecho" : ex.tag}</span><small>${ex.names.length} estados · ${ex.unit}</small>`;
+    b.addEventListener("click", () => openEx(ex)); $("exList").appendChild(b);
+  });
+}
+
+function openEx(ex) {
+  $("exMenu").hidden = true; const v = $("exView"); v.hidden = false;
+  const n = ex.names.length, id = ex.id;
+  let h = `<button class="back" id="backBtn">← Todos los ejercicios</button>`;
+  h += `<div class="card"><div class="eyebrow">${ex.tag} · pasos en ${ex.unit}</div><h2>${ex.title}</h2><p class="story">${ex.story}</p>
+    <p><b>Estados:</b> ${ex.names.map((nm, i) => `<span class="st${i}">${i} = ${nm}</span>`).join(" · ")}</p></div>`;
+
+  h += `<div class="card"><h3>a) Matriz de transición</h3><p class="lede">Fila = actual, columna = futuro. La suma se calcula sola.</p><div class="tscroll"><table class="mx"><caption>Futuro →</caption><tr><th rowspan="${n + 1}" class="vlabel">Actual</th><th>Est</th>${ex.names.map((nm, j) => `<th class="st${j}">${j}<br><small>${nm}</small></th>`).join("")}<th>Suma</th></tr>`;
+  for (let i = 0; i < n; i++) h += `<tr><th class="st${i}">${i}</th>${ex.names.map((_, j) => `<td><input class="cell" inputmode="decimal" id="m-${id}-${i}-${j}" data-r="${i}" aria-label="Fila ${i} columna ${j}"></td>`).join("")}<td class="sum" id="s-${id}-${i}">–</td></tr>`;
+  h += `</table></div><div class="btnrow" style="margin-top:10px"><button class="btn ghost" id="diagBtn">Ver el diagrama</button></div><div id="diagBox"></div></div>`;
+
+  h += `<div class="card"><h3>b) ${ex.b.q}</h3><p class="lede">Escribe el vector de cada paso (${ex.b.n} pasos) y la respuesta.</p><div class="tscroll"><table><tr><th>Paso</th>${ex.names.map((nm, j) => `<th class="st${j}">${nm}</th>`).join("")}</tr>`;
+  h += `<tr><td>Hoy</td>${ex.names.map((_, j) => `<td class="num">${j === ex.b.from ? 1 : 0}</td>`).join("")}</tr>`;
+  for (let k = 0; k < ex.b.n; k++) h += `<tr><td>${k + 1}</td>${ex.names.map((_, j) => `<td><input class="cell" inputmode="decimal" id="v-${id}-${k}-${j}" aria-label="Paso ${k + 1} estado ${j}"></td>`).join("")}</tr>`;
+  h += `</table></div><div class="qline" style="margin-top:10px"><label for="b-${id}"><b>Respuesta:</b></label><input class="cell" inputmode="decimal" id="b-${id}"></div></div>`;
+
+  h += `<div class="card"><h3>c) A largo plazo</h3><p class="lede">Las π de cada estado (4 decimales o porcentaje).</p><div class="qline">${ex.names.map((nm, j) => `<label for="p-${id}-${j}" class="st${j}"><b>π${SUB[j]}</b> ${nm}</label><input class="cell" inputmode="decimal" id="p-${id}-${j}">`).join("")}</div>`;
+  if (ex.N) h += `<div class="qline" style="margin-top:12px"><label for="n-${id}">${ex.N.q}</label><input class="cell" inputmode="decimal" id="n-${id}"></div>`;
+  h += `</div>`;
+
+  h += `<div class="card"><div class="btnrow"><button class="btn" id="checkBtn">Revisar</button><button class="btn ghost" id="hintBtn">Pista</button><button class="btn hot" id="solBtn">Ver solución</button></div><p class="score" id="score" style="margin-top:10px"></p><div id="hintBox" style="display:grid;gap:8px"></div><div id="solBox" style="display:grid;gap:10px;margin-top:6px"></div></div>`;
+  v.innerHTML = h; window.scrollTo({ top: 0 });
+
+  $("backBtn").addEventListener("click", () => { v.hidden = true; $("exMenu").hidden = false; renderMenu(); window.scrollTo({ top: 0 }); });
+  const readM = () => ex.names.map((_, i) => ex.names.map((_, j) => asProb($(`m-${id}-${i}-${j}`).value)));
+  v.querySelectorAll("input[data-r]").forEach(inp => inp.addEventListener("input", () => {
+    const i = inp.dataset.r, row = ex.names.map((_, j) => asProb($(`m-${id}-${i}-${j}`).value));
+    const cell = $(`s-${id}-${i}`);
+    if (row.some(isNaN)) { cell.textContent = "–"; cell.className = "sum"; return; }
+    const sm = row.reduce((a, b) => a + b, 0); cell.textContent = fmt(sm, 3); cell.className = "sum " + (Math.abs(sm - 1) < 1e-6 ? "good" : "bad");
+  }));
+  $("diagBtn").addEventListener("click", () => {
+    const M = readM();
+    if (M.flat().some(isNaN)) { $("diagBox").innerHTML = `<div class="note hot" style="margin-top:10px"><p>Llena toda la matriz y te dibujo el diagrama con tus números.</p></div>`; return; }
+    $("diagBox").innerHTML = `<div class="diagbox" style="margin-top:10px">${diagram(M, ex.names, "u" + id)}</div>`;
+  });
+  let hn = 0;
+  $("hintBtn").addEventListener("click", () => { if (hn < ex.hints.length) { $("hintBox").insertAdjacentHTML("beforeend", `<div class="note hot"><p><b>Pista ${hn + 1}:</b> ${ex.hints[hn]}</p></div>`); hn++; } if (hn >= ex.hints.length) $("hintBtn").disabled = true; });
+  $("checkBtn").addEventListener("click", () => {
+    let ok = 0, tot = 0;
+    const mark = (el, good) => { el.classList.remove("good", "bad"); if (el.value.trim() !== "") el.classList.add(good ? "good" : "bad"); tot++; if (good) ok++; };
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const el = $(`m-${id}-${i}-${j}`); mark(el, okP(el.value, ex.P[i][j])); }
+    ex.vecs.forEach((vec, k) => vec.forEach((x, j) => { const el = $(`v-${id}-${k}-${j}`); mark(el, okP(el.value, x)); }));
+    const b = $(`b-${id}`); mark(b, okP(b.value, ex.bAns));
+    ex.pi.forEach((x, j) => { const el = $(`p-${id}-${j}`); mark(el, okP(el.value, x)); });
+    if (ex.N) { const el = $(`n-${id}`); mark(el, okN(el.value, ex.NAns)); }
+    $("score").textContent = `${ok} de ${tot} correctas${ok === tot ? " · ¡Perfecto!" : ""}`;
+    $("score").style.color = ok === tot ? "var(--ok)" : "var(--ink)";
+    if (ok === tot) { const d = store.get("done", {}); d[id] = true; store.set("done", d); }
+  });
+  $("solBtn").addEventListener("click", () => {
+    let s = `<h3>Matriz</h3><div class="tscroll">${matrixTable(ex.P, ex.names)}</div><div class="diagbox">${diagram(ex.P, ex.names, "s" + id)}</div>`;
+    s += `<h3>Inciso b: ${ex.b.n} pasos</h3>`;
+    let vec = ex.names.map((_, i) => (i === ex.b.from ? 1 : 0));
+    ex.vecs.forEach((nx, k) => { s += `<p><b>Paso ${k + 1}</b></p><div class="calc">${stepCalc(vec, ex.P, ex.names)}</div>`; vec = nx; });
+    s += `<div class="note ok"><p>Respuesta: <b>${fmt(ex.bAns)}</b> (${pct(ex.bAns)}).</p></div>`;
+    s += `<h3>Inciso c: largo plazo</h3><div class="eqs">${eqsHTML(ex.P)}</div><p>Despeja π₀ = 1 − ${ex.names.slice(1).map((_, i) => "π" + SUB[i + 1]).join(" − ")}, reemplaza y resuelve:</p>${bars(ex.pi, ex.names)}`;
+    s += `<div class="note ok"><p>${ex.pi.map((x, j) => `π${SUB[j]} = ${fmt(x)}`).join(" · ")}${ex.N ? `<br>${ex.N.total} × ${fmt(ex.pi[ex.N.state])} ≈ <b>${fmt(ex.NAns, 2)}</b>, unas <b>${Math.round(ex.NAns)}</b> personas.` : ""}</p></div>`;
+    $("solBox").innerHTML = s; $("solBox").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+renderMenu();
+
+/* ---------- comprobador ---------- */
+(function () {
+  const names = ["Estado 0", "Estado 1", "Estado 2"];
+  let h = `<table class="mx"><caption>Futuro →</caption><tr><th rowspan="4" class="vlabel">Actual</th><th>Est</th><th class="st0">0</th><th class="st1">1</th><th class="st2">2</th><th>Suma</th></tr>`;
+  for (let i = 0; i < 3; i++) h += `<tr><th class="st${i}">${i}</th>${[0, 1, 2].map(j => `<td><input class="cell" inputmode="decimal" id="c-${i}-${j}" aria-label="Fila ${i} columna ${j}"></td>`).join("")}<td class="sum" id="cs-${i}">–</td></tr>`;
+  $("checker").innerHTML = h + "</table>";
+  $("checkDiag").innerHTML = `<p class="lede" style="padding:12px;margin:0">El diagrama aparece cuando llenes las 9 casillas.</p>`;
+  const upd = () => {
+    const M = [0, 1, 2].map(i => [0, 1, 2].map(j => asProb($(`c-${i}-${j}`).value)));
+    M.forEach((row, i) => { const c = $(`cs-${i}`); if (row.some(isNaN)) { c.textContent = "–"; c.className = "sum"; return; } const sm = row.reduce((a, b) => a + b, 0); c.textContent = fmt(sm, 3); c.className = "sum " + (Math.abs(sm - 1) < 1e-6 ? "good" : "bad"); });
+    if (!M.flat().some(isNaN)) $("checkDiag").innerHTML = diagram(M, names, "chk");
+  };
+  document.querySelectorAll("#checker input").forEach(i => i.addEventListener("input", upd));
+})();
+
+/* ---------- tarjetas ---------- */
+const FLASH = [
+  ["¿Qué representa un estado y cómo se define la variable?", "La variable es lo que se observa en cada momento (por ejemplo, la ciudad donde está el viajero). Un estado es cada valor posible de esa variable (Bogotá, Cali, Medellín). Se numeran 0, 1, 2."],
+  ["¿Qué cambia en el diagrama al pasar de 2 a 3 estados?", "Aparece un tercer círculo. Pasas de 4 flechas (2 lazos y 2 entre estados) a hasta 9 flechas: 3 lazos y 6 flechas entre estados, porque cada par tiene ida y vuelta."],
+  ["¿Cómo se organiza una matriz 3 × 3 y qué significa cada elemento?", "Las filas son el estado actual y las columnas el estado futuro. El elemento de la fila i y columna j es la probabilidad de pasar del estado i al j en un paso. La diagonal es la probabilidad de quedarse."],
+  ["¿Cómo se comprueba que las probabilidades estén bien distribuidas?", "Cada fila debe sumar 1 (100%), y ningún valor puede ser negativo ni mayor que 1."],
+  ["¿Cómo se obtiene la probabilidad después de dos transiciones?", "Se escribe el vector del estado inicial (1 en el estado de hoy y 0 en los demás) y se multiplica por la matriz dos veces, fila por columna. El número en la posición del estado buscado es la respuesta."],
+  ["¿Qué significa el largo plazo (estado estable)?", "Son los porcentajes a los que se estabiliza la cadena después de muchos pasos. Se hallan con las ecuaciones π por columnas más π₀ + π₁ + π₂ = 1."],
+  ["¿Por qué solo importa el estado actual?", "Es la propiedad de Markov: el futuro depende solo del presente, no de cómo se llegó a él."]
+];
+FLASH.forEach(([q, a]) => {
+  const b = document.createElement("button"); b.className = "fcard"; b.setAttribute("aria-expanded", "false");
+  b.innerHTML = `<b>${q}</b><em>Toca para ver la respuesta</em><span>${a}</span>`;
+  b.addEventListener("click", () => { const on = b.getAttribute("aria-expanded") !== "true"; b.setAttribute("aria-expanded", on); b.querySelector("em").textContent = on ? "Toca para ocultar" : "Toca para ver la respuesta"; });
+  $("flash").appendChild(b);
+});
+
+/* ---------- arranque ---------- */
+showStep(store.get("step", 0));
+const hash = (location.hash || "").slice(1);
+openTab(["aprende", "ejemplo", "practica", "repaso"].includes(hash) ? hash : store.get("tab", "aprende"), false);
+</script>
+</body>
+</html>
